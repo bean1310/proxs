@@ -1,0 +1,9 @@
+port = 8080
+
+[proxy.env1]
+port = 9090
+target_addrs = ["dev-instance-1.local"]
+
+[proxy.env2]
+port = 9191
+target_addrs = ["dev-instance-2.local"]
