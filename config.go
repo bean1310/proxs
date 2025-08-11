@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/BurntSushi/toml"
+	"github.com/pkg/errors"
 )
 
 type Proxy struct {
@@ -27,12 +27,12 @@ func LoadConfig() *Config {
 	return config
 }
 
-func GetSocksAddrport(cfg *Config, domain string) string {
+func GetSocksAddrport(cfg *Config, domain string) (string, uint16, error) {
 	for _, proxy := range cfg.Proxies {
 		if proxy.TargetAddrs[0] == domain {
-			return fmt.Sprintf("127.0.0.1:%d", proxy.Port)
+			return "127.0.0.1", uint16(proxy.Port), nil
 		}
 	}
 	log.Printf("No proxy found for domain %s", domain)
-	return "0.0.0.0:0"
+	return "0.0.0.0", 0, errors.New("no proxy found")
 }

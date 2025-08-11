@@ -5,8 +5,6 @@ import (
 	"io"
 	"log"
 	"net"
-
-	"golang.org/x/net/proxy"
 )
 
 func handleConnection(src net.Conn, cfg *Config) {
@@ -18,18 +16,14 @@ func handleConnection(src net.Conn, cfg *Config) {
 		return
 	}
 
-	var targetAddr string
-	targetAddr = GetSocksAddrport(cfg, destAddr)
-
-	pd, err := proxy.SOCKS5("tcp", targetAddr, nil, proxy.Direct)
+	socksAddr, socksPort, err := GetSocksAddrport(cfg, destAddr)
 	if err != nil {
-		log.Printf("Failed to create SOCKS5 proxy: %v", err)
+		log.Printf("Failed to get SOCKS address and port: %v", err)
 		return
 	}
-
-	dst, err := pd.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
+	dst, err := createSocksConnection(socksAddr, socksPort, destAddr, destPort)
 	if err != nil {
-		log.Printf("Failed to connect to target %s: %v", targetAddr, err)
+		log.Printf("Failed to create SOCKS connection: %v", err)
 		return
 	}
 	defer dst.Close()
