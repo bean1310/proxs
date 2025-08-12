@@ -76,15 +76,12 @@ func ParseRequest(r io.Reader) (Request, error) {
 
 	// under prototype, we handle only domain address types.
 	switch req.AddrType {
-	case byte(0x03):
+	case byte(0x01), byte(0x03):
 		tmp := make([]byte, 1)
 		if _, err := io.ReadFull(r, tmp); err != nil {
 			return Request{}, err
 		}
 		domainLen := tmp[0]
-		if domainLen > 255 {
-			return Request{}, io.ErrShortBuffer
-		}
 		domain := make([]byte, domainLen)
 		if _, err := io.ReadFull(r, domain); err != nil {
 			return Request{}, err

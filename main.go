@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 )
 
@@ -45,21 +46,23 @@ func handleConnection(src net.Conn, cfg *Config) {
 func main() {
 	var listenAddr string
 
-	cfg := LoadConfig()
-	if cfg != nil {
-		listenAddr = fmt.Sprintf("127.0.0.1:%d", cfg.ListenPort)
+	cfg, err := LoadConfig()
+	if err != nil {
+		slog.Error("Failed to load configuration", "error", err)
+		return
 	}
+	listenAddr = net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", cfg.ListenPort))
 
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", listenAddr, err)
+		slog.Error("Failed to listen on address", "address", listenAddr, "error", err)
+		return
 	}
-	// log.Printf("Listening on %s, forwarding to %s", listenAddr, targetAddrs[])
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Printf("Failed to accept connection: %v", err)
+			slog.Warn("Failed to accept connection", "error", err)
 			continue
 		}
 		go handleConnection(conn, cfg)
