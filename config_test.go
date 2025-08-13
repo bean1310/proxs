@@ -4,7 +4,7 @@ import "testing"
 
 func TestGetSocksAddrport(t *testing.T) {
 	cfg := &Config{
-		Proxies: map[string]Proxy{
+		Proxies: map[string]sshProxy{
 			"example": {Port: 1080, TargetAddrs: []string{"example.com", "example.org", "example*"}},
 		},
 	}

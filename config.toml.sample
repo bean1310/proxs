@@ -1,9 +1,13 @@
 port = 8080
 
 [proxy.env1]
-port = 9090
+hostname = "dev-instance-1.local"
+user = "ubuntu"
+port = 22
 target_addrs = ["dev-instance-1.local"]
 
 [proxy.env2]
-port = 9191
+hostname = "dev-instance-2.local"
+user = "ubuntu"
+port = 22
 target_addrs = ["dev-instance-2.local"]

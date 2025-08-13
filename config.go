@@ -9,14 +9,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Proxy struct {
-	Port        int      `toml:"port"`
-	TargetAddrs []string `toml:"target_addrs"`
-}
-
 type Config struct {
-	ListenPort int              `toml:"port"`
-	Proxies    map[string]Proxy `toml:"proxy"`
+	ListenPort int                 `toml:"port"`
+	Proxies    map[string]sshProxy `toml:"proxy"`
 }
 
 func LoadConfig() (*Config, error) {

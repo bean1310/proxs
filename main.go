@@ -5,10 +5,12 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"maps"
 	"net"
+	"slices"
 )
 
-func handleConnection(src net.Conn, cfg *Config) {
+func handleConnection(src net.Conn, proxies []sshProxy, cfg *Config) {
 	defer src.Close()
 
 	destAddr, destPort, err := socksConnection(src, cfg)
@@ -17,19 +19,20 @@ func handleConnection(src net.Conn, cfg *Config) {
 		return
 	}
 
-	socksAddr, socksPort, err := GetSocksAddrport(cfg, destAddr)
+	sp, err := sshProxySelectFrom(destAddr, proxies)
 	if err != nil {
-		log.Printf("Failed to get SOCKS address and port: %v", err)
+		log.Printf("Failed to select SSH proxy: %v", err)
 		return
 	}
-	dst, err := createSocksConnection(socksAddr, socksPort, destAddr, destPort)
+
+	dst, err := sp.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
 	if err != nil {
-		log.Printf("Failed to create SOCKS connection: %v", err)
+		slog.Error("Failed to create destination connection", "address", destAddr, "port", destPort, "error", err)
 		return
 	}
 	defer dst.Close()
+	defer sp.Deactivate()
 
-	// 双方向コピー
 	go func() {
 		_, err := io.Copy(dst, src)
 		if err != nil {
@@ -59,12 +62,14 @@ func main() {
 		return
 	}
 
+	proxies := slices.Collect(maps.Values(cfg.Proxies))
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			slog.Warn("Failed to accept connection", "error", err)
 			continue
 		}
-		go handleConnection(conn, cfg)
+		go handleConnection(conn, proxies, cfg)
 	}
 }
