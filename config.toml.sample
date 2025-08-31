@@ -1,13 +1,13 @@
 port = 8080
 
 [proxy.env1]
+use_ssh_client = false # Using proxs ssh client that automatically connect  to destination host.
 hostname = "dev-instance-1.local"
-user = "ubuntu"
-port = 22
+user = "ubuntu" # SSH server user name.
+port = 22 # SSH server port number.
 target_addrs = ["dev-instance-1.local"]
 
 [proxy.env2]
-hostname = "dev-instance-2.local"
-user = "ubuntu"
-port = 22
-target_addrs = ["dev-instance-2.local"]
+use_ssh_client = true # Using ssh client manually for establishing connection
+port = 22 # Destination port listen socks connection
+target_addrs = ["dev-instance-2.local"] 

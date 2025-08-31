@@ -9,15 +9,42 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/net/proxy"
 )
 
+type deepClient interface {
+	Dial(network, addr string) (net.Conn, error)
+	Close() error
+}
+
+type Socks5Client struct {
+	d proxy.Dialer
+}
+
+func (c *Socks5Client) Close() error {
+	return nil
+}
+
+func (c *Socks5Client) Dial(network, addr string) (net.Conn, error) {
+	return c.d.Dial(network, addr)
+}
+
+func NewSocks5Client(network, address string, auth *proxy.Auth, forward proxy.Dialer) (deepClient, error) {
+	dialer, err := proxy.SOCKS5(network, address, auth, forward)
+	if err != nil {
+		return nil, err
+	}
+	return &Socks5Client{d: dialer}, nil
+}
+
 type sshProxy struct {
-	HostName    string   `toml:"hostname"`
-	User        string   `toml:"user"`
-	Port        int      `toml:"port"`
-	TargetAddrs []string `toml:"target_addrs"`
-	sshClient   *ssh.Client
-	cleanupFunc func()
+	HostName     string   `toml:"hostname"`
+	User         string   `toml:"user"`
+	Port         int      `toml:"port"`
+	TargetAddrs  []string `toml:"target_addrs"`
+	UseSshClient bool     `toml:"use_ssh_client"`
+	sshClient    deepClient
+	cleanupFunc  func()
 }
 
 func sshProxySelectFrom(addr string, proxies []sshProxy) (*sshProxy, error) {
@@ -72,7 +99,7 @@ func (p *sshProxy) CreateSshConfig() (*ssh.ClientConfig, func(), error) {
 	}, cleanup, nil
 }
 
-func (p *sshProxy) Activate() (*ssh.Client, error) {
+func (p *sshProxy) Activate() (deepClient, error) {
 	if p.sshClient != nil {
 		return p.sshClient, nil
 	}
@@ -85,6 +112,16 @@ func (p *sshProxy) Activate() (*ssh.Client, error) {
 	} else {
 		p.cleanupFunc = func() {}
 	}
+
+	if p.UseSshClient {
+		socksClient, err := NewSocks5Client("tcp", fmt.Sprintf("%s:%d", p.HostName, p.Port), nil, proxy.Direct)
+		if err != nil {
+			return nil, err
+		}
+
+		return socksClient, nil
+	}
+
 	slog.Info("Activating SSH proxy", "hostname", p.HostName, "port", p.Port)
 	p.sshClient, err = ssh.Dial("tcp", fmt.Sprintf("%s:%d", p.HostName, p.Port), config)
 	if err != nil {
