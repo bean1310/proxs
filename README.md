@@ -57,12 +57,14 @@ sequenceDiagram
     autonumber
     participant C as Client
     participant PS as Proxs
-    participant TS as Socks Server
-    participant T as Target Server (example.com:443)
+    participant T1 as SSH Server 01
+    participant S1 as HTTP Server 01 (example.com:443)
+    participant T2 as SSH Server 02
+    participant S2 as HTTP Server 02 (example.org:443)
 
     %% --------- SOCKS5 Handshake (plaintext) ---------
     rect rgb(255,250,205)
-    Note over C,PS: SOCKS5 ハンドシェイク（平文）
+    Note over C,PS: SOCKS5 handshake
 
     C->>PS: Greeting<br/>(VER=5, NMETHODS, METHODS…)
     PS-->>C: Method Selection<br/>(VER=5, METHOD)
@@ -73,36 +75,24 @@ sequenceDiagram
     %% end
 
     C->>PS: Request CONNECT<br/>(VER=5, CMD=1, RSV=0,<br/>ATYP=DOMAIN/IP, DST.ADDR, DST.PORT)
-
-    rect rgb(255,120,0)
-    PS->>TS: Greeting<br/>(VER=5, NMETHODS, METHODS…)
-    TS-->>PS: Method Selection<br/>(VER=5, METHOD)
-
-    PS->>TS: Forward Request CONNECT<br/>(VER=5, CMD=1, RSV=0,<br/>ATYP=DOMAIN/IP, DST.ADDR, DST.PORT)
-    TS-->>PS: Reply<br/>(VER=5, REP=0=成功, BND.ADDR, BND.PORT)
-
     PS-->>C: Reply<br/>(VER=5, REP=0=成功, BND.ADDR, BND.PORT)
 
-    end %% True Socks connection end
-
-    end %% Root socks connetction end
+    end
 
     %% --------- Server connects to Target ---------
-    TS->>T: TCP 接続 (DST.ADDR:DST.PORT)
-    T-->>TS: 接続確立 (SYN/ACK)
+    rect rgb(255,235,205)
+    Note over PS,T1: Establish SSH tunnel
+    PS->>T1: TCP 接続 (DST.ADDR:DST.PORT)
+    T1-->>PS: 接続確立 (SYN/ACK)
+    end
 
     %% --------- TLS/HTTPS payload (encrypted) ---------
     rect rgb(220,235,255)
-    Note over C,T: ここから上位プロトコル（TLS/HTTPS）のデータ転送（暗号化）
-
-    C-)PS: TLS ClientHello<br/>(SNI が平文の場合あり / ECH 有効なら不可視)
-    PS-)T: 転送
-    T-)PS: TLS ServerHello ほか
-    PS-)C: 転送
+    Note over C,S1: HTTP(S) over SSH
 
     C-->>PS: HTTPS Application Data（暗号化）
-    PS-->>T: 転送
-    T-->>PS: HTTPS Application Data（暗号化）
+    PS-->>S1: 転送
+    S1-->>PS: HTTPS Application Data（暗号化）
     PS-->>C: 転送
     end
 ```
