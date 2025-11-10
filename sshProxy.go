@@ -6,10 +6,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/net/proxy"
+
+	"github.com/kevinburke/ssh_config"
 )
 
 type deepClient interface {
@@ -38,9 +41,9 @@ func NewSocks5Client(network, address string, auth *proxy.Auth, forward proxy.Di
 }
 
 type sshProxy struct {
-	HostName     string   `toml:"hostname"`
-	User         string   `toml:"user"`
-	Port         int      `toml:"port"`
+	HostName     string `toml:"hostname"`
+	User         string
+	Port         int
 	TargetAddrs  []string `toml:"target_addrs"`
 	UseSshClient bool     `toml:"use_ssh_client"`
 	sshClient    deepClient
@@ -92,8 +95,13 @@ func (p *sshProxy) CreateSshConfig() (*ssh.ClientConfig, func(), error) {
 		return nil, nil, fmt.Errorf("failed to create auth from agent: %w", err)
 	}
 
+	user, err := ssh_config.GetStrict(p.HostName, "User")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get user from ssh config: %w", err)
+	}
+
 	return &ssh.ClientConfig{
-		User:            p.User,
+		User:            user,
 		Auth:            []ssh.AuthMethod{auth},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // This code is insecure; use a proper host key callback in production
 	}, cleanup, nil
@@ -113,6 +121,53 @@ func (p *sshProxy) Activate() (deepClient, error) {
 		p.cleanupFunc = func() {}
 	}
 
+	jumpConn := net.Conn(nil)
+	// If defined 'ProxyJump', create base ssh connection first.
+	proxyJump, err := ssh_config.GetStrict(p.HostName, "ProxyJump")
+	if err == nil && proxyJump != "" {
+		slog.Info("Using ProxyJump for SSH proxy", "proxyJump", proxyJump)
+		jumpHostName, err := ssh_config.GetStrict(proxyJump, "HostName")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get jump host name: %w", err)
+		}
+		jumpUser, err := ssh_config.GetStrict(proxyJump, "User")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get jump user: %w", err)
+		}
+		jumpPortStr, err := ssh_config.GetStrict(proxyJump, "Port")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get jump port: %w", err)
+		}
+		jumpPort, err := strconv.Atoi(jumpPortStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert jump port to int: %w", err)
+		}
+
+		jumpConfig := &ssh.ClientConfig{
+			User:            jumpUser,
+			Auth:            config.Auth,
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		}
+		slog.Info("Activating jump SSH proxy", "hostname", jumpHostName, "port", jumpPort)
+		jumpClient, err := ssh.Dial("tcp", proxyJump, jumpConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to jump proxy: %w", err)
+		}
+
+		hostname, err := ssh_config.GetStrict(p.HostName, "HostName")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get host name: %w", err)
+		}
+		port, err := ssh_config.GetStrict(p.HostName, "Port")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get port: %w", err)
+		}
+		jumpConn, err = jumpClient.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to jump host: %w", err)
+		}
+	}
+
 	if p.UseSshClient {
 		socksClient, err := NewSocks5Client("tcp", fmt.Sprintf("%s:%d", p.HostName, p.Port), nil, proxy.Direct)
 		if err != nil {
@@ -123,7 +178,16 @@ func (p *sshProxy) Activate() (deepClient, error) {
 	}
 
 	slog.Info("Activating SSH proxy", "hostname", p.HostName, "port", p.Port)
-	p.sshClient, err = ssh.Dial("tcp", fmt.Sprintf("%s:%d", p.HostName, p.Port), config)
+	if jumpConn != nil {
+		sshClient, _, _, err := ssh.NewClientConn(jumpConn, fmt.Sprintf("%s:%d", p.HostName, p.Port), config)
+		if err != nil {
+			slog.Error("Failed to connect to SSH proxy via jump host", "hostname", p.HostName, "port", p.Port, "error", err)
+			return nil, err
+		}
+		p.sshClient = ssh.NewClient(sshClient, nil, nil)
+	} else {
+		p.sshClient, err = ssh.Dial("tcp", fmt.Sprintf("%s:%d", p.HostName, p.Port), config)
+	}
 	if err != nil {
 		slog.Error("Failed to connect to SSH proxy", "hostname", p.HostName, "port", p.Port, "error", err)
 		return nil, err

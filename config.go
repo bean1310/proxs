@@ -27,9 +27,38 @@ func LoadConfig() (*Config, error) {
 		slog.Error("Failed to load configuration file", "file", "config.toml", "error", err)
 		return nil, err
 	}
+
+	// err = overrideConfigBySshConfig(config)
+	// if err != nil {
+	// 	slog.Error("Failed to override configuration by SSH config", "error", err)
+	// 	return nil, err
+	// }
+
 	slog.Info("Configuration loaded", "config", config)
 	return config, nil
 }
+
+// func overrideConfigBySshConfig(cfg *Config) error {
+// 	target := cfg.Proxies
+// 	for _, proxy := range target {
+// 		hostname := proxy.HostName
+
+// 		user, err := ssh_config.GetStrict(hostname, "User")
+// 		if err != nil {
+// 			return err
+// 		}
+// 		port, err := ssh_config.GetStrict(hostname, "Port")
+// 		if err != nil {
+// 			return err
+// 		}
+// 		proxy.User = user
+// 		proxy.Port, err = strconv.Atoi(port)
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }
 
 func configDir(app string) (string, error) {
 	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
