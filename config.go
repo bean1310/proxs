@@ -53,17 +53,17 @@ func makeNestedSshConnection(host string) (*sshConnection, error) {
 		return nil, err
 	}
 
-	_portStr, err := cfg.Get(host, "Port")
+	portStr, err := cfg.Get(host, "Port")
 	if err != nil {
 		slog.Error("Failed to get Port from ssh config", "host", host, "error", err)
 		return nil, err
 	}
-	if _portStr == "" {
-		_portStr = "22" // Default SSH port
+	if portStr == "" {
+		portStr = "22" // Default SSH port
 	}
-	result.Port, err = strconv.Atoi(_portStr)
+	result.Port, err = strconv.Atoi(portStr)
 	if err != nil {
-		slog.Error("Failed to convert Port to integer", "host", host, "port", _portStr, "error", err)
+		slog.Error("Failed to convert Port to integer", "host", host, "port", portStr, "error", err)
 		return nil, err
 	}
 
