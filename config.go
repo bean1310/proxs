@@ -4,14 +4,76 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/BurntSushi/toml"
-	"github.com/pkg/errors"
+	"github.com/kevinburke/ssh_config"
 )
 
 type Config struct {
 	ListenPort int                 `toml:"port"`
 	Proxies    map[string]sshProxy `toml:"proxy"`
+}
+
+func makeNestedSshConnection(host string) (*sshConnection, error) {
+
+	result := &sshConnection{}
+	var err error
+
+	// If `SSH_CONFIG_FILE` is set, use it; otherwise, use the default location.
+	configPath := os.Getenv("SSH_CONFIG_FILE")
+	if configPath == "" {
+		configPath = filepath.Join(os.Getenv("HOME"), ".ssh", "config")
+	}
+
+	f, err := os.Open(configPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	cfg, err := ssh_config.Decode(f)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for ProxyJump
+	jumpHost, _ := cfg.Get(host, "ProxyJump")
+	if jumpHost != "" {
+		// If ProxyJump is specified, create nested sshConnection
+		result.JumpHost, err = makeNestedSshConnection(jumpHost)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	result.HostName, err = cfg.Get(host, "HostName")
+	if err != nil {
+		slog.Error("Failed to get HostName from ssh config", "host", host, "error", err)
+		return nil, err
+	}
+
+	_portStr, err := cfg.Get(host, "Port")
+	if err != nil {
+		slog.Error("Failed to get Port from ssh config", "host", host, "error", err)
+		return nil, err
+	}
+	if _portStr == "" {
+		_portStr = "22" // Default SSH port
+	}
+	result.Port, err = strconv.Atoi(_portStr)
+	if err != nil {
+		slog.Error("Failed to convert Port to integer", "host", host, "port", _portStr, "error", err)
+		return nil, err
+	}
+
+	result.User, err = cfg.Get(host, "User")
+	if err != nil {
+		slog.Error("Failed to get User from ssh config", "host", host, "error", err)
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func LoadConfig() (*Config, error) {
@@ -27,7 +89,17 @@ func LoadConfig() (*Config, error) {
 		slog.Error("Failed to load configuration file", "file", "config.toml", "error", err)
 		return nil, err
 	}
-	slog.Info("Configuration loaded", "config", config)
+	slog.Debug("Configuration loaded", "config", config)
+
+	for key := range config.Proxies {
+		proxy := config.Proxies[key]
+		proxy.Connection, err = makeNestedSshConnection(proxy.Host)
+		if err != nil {
+			slog.Error("Failed to create sshConnection from ssh config", "host", proxy.Host, "error", err)
+			return nil, err
+		}
+		config.Proxies[key] = proxy
+	}
 	return config, nil
 }
 
@@ -42,22 +114,4 @@ func configDir(app string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(base, app), nil
-}
-
-func GetSocksAddrport(cfg *Config, domain string) (string, uint16, error) {
-	for _, proxy := range cfg.Proxies {
-		for _, targetAddr := range proxy.TargetAddrs {
-			match, err := filepath.Match(targetAddr, domain)
-			if err != nil {
-				slog.Error("Error matching domain with target address", "domain", domain, "targetAddr", targetAddr, "error", err)
-				return "", 0, err
-			}
-			if match {
-				slog.Info("Matched proxy for domain", "domain", domain, "address", "127.0.0.1", "port", proxy.Port)
-				return "127.0.0.1", uint16(proxy.Port), nil
-			}
-		}
-	}
-	slog.Warn("No proxy found for domain", "domain", domain)
-	return "0.0.0.0", 0, errors.New("no proxy found")
 }
