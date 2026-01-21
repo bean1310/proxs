@@ -68,7 +68,7 @@ func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, error) {
 		slog.Info("Dialing SSH connection", "hostname", sc.HostName, "port", sc.Port)
 		return ssh.Dial(network, fmt.Sprintf("%s:%d", sc.HostName, sc.Port), sshConfig)
 	} else {
-		jumpClient, err := sc.JumpHost.Dial(network, fmt.Sprintf("%s:%d", sc.JumpHost.HostName, sc.JumpHost.Port))
+		jumpClient, err := sc.JumpHost.Dial(network, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial jump host: %w", err)
 		}
