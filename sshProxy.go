@@ -43,14 +43,6 @@ func sshProxySelectFrom(addr string, proxies []sshProxy) (*sshProxy, error) {
 	return nil, fmt.Errorf("no matching proxy found for address: %s", addr)
 }
 
-func (p *sshProxy) Dial(network, addr string) (net.Conn, error) {
-	sconn, err := p.Connection.Dial("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	return sconn.Dial(network, addr)
-}
-
 // This function dials an SSH connection recursively through jump hosts.
 func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, error) {
 	if sc.JumpHost == nil {

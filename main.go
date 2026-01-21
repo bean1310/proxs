@@ -24,13 +24,23 @@ func handleConnection(src net.Conn, proxies []sshProxy, cfg *Config) {
 		log.Printf("Failed to select SSH proxy: %v", err)
 		return
 	}
-	dst, err := sp.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
+
+	// Create SSH connection to the last jump host in the chain
+	sshProxyClient, err := sp.Connection.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
 	if err != nil {
 		slog.Error("Failed to create destination connection", "address", destAddr, "port", destPort, "error", err)
 		return
 	}
+	defer sshProxyClient.Close()
+
+	// Create a connection to the destination address over the SSH proxy
+	dst, err := sshProxyClient.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
+	if err != nil {
+		slog.Error("Failed to create destination connection over SSH", "address", destAddr, "port", destPort, "error", err)
+		return
+	}
+
 	defer dst.Close()
-	// defer sp.Deactivate()
 
 	go func() {
 		_, err := io.Copy(dst, src)
