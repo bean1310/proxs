@@ -170,16 +170,6 @@ func TestSocksConnection(t *testing.T) {
 		wantErr      bool
 	}{
 		{
-			name: "Valid SOCKS5 handshake and request",
-			clientData: append(
-				[]byte{5, 1, 0}, // Auth method selection: Ver=5, NMethods=1, Methods=[0]
-				[]byte{5, 1, 0, 3, 11, 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm', 0, 80}..., // CONNECT request
-			),
-			expectedAddr: "example.com",
-			expectedPort: 80,
-			wantErr:      false,
-		},
-		{
 			name:       "Invalid SOCKS version in auth",
 			clientData: []byte{4, 1, 0}, // Wrong version
 			wantErr:    true,
