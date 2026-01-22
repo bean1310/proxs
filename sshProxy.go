@@ -16,13 +16,13 @@ type sshConnection struct {
 	User     string
 	Port     int
 	JumpHost *sshConnection
+	Conn     *ssh.Conn
 }
 
 type sshProxy struct {
 	Host        string   `toml:"host"`
 	TargetAddrs []string `toml:"target_addrs"`
 	Connection  *sshConnection
-	cleanupFunc func()
 }
 
 func sshProxySelectFrom(addr string, proxies []sshProxy) (*sshProxy, error) {
@@ -58,7 +58,14 @@ func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, error) {
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(), // This code is insecure; use a proper host key callback in production
 		}
 		slog.Info("Dialing SSH connection", "hostname", sc.HostName, "port", sc.Port)
-		return ssh.Dial(network, fmt.Sprintf("%s:%d", sc.HostName, sc.Port), sshConfig)
+		conn, err := ssh.Dial(network, fmt.Sprintf("%s:%d", sc.HostName, sc.Port), sshConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to dial SSH connection: %w", err)
+		}
+
+		sc.Conn = &conn.Conn
+
+		return conn, nil
 	} else {
 		jumpClient, err := sc.JumpHost.Dial(network, "")
 		if err != nil {
@@ -83,8 +90,29 @@ func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create new SSH client connection: %w", err)
 		}
+
+		sc.Conn = &conn
+
 		return ssh.NewClient(conn, chans, reqs), nil
 	}
+}
+
+// Close closes the SSH connection.
+func (sc *sshConnection) CloseRecursively() error {
+	if sc.Conn != nil {
+		// First, close self connection
+		conn := *sc.Conn
+		err := conn.Close()
+		if err != nil {
+			return err
+		}
+
+		// Then, close jump host connection recursively
+		if sc.JumpHost != nil {
+			return sc.JumpHost.CloseRecursively()
+		}
+	}
+	return nil
 }
 
 func authFromAgent() (ssh.AuthMethod, func(), error) {

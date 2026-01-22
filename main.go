@@ -31,7 +31,7 @@ func handleConnection(src net.Conn, proxies []sshProxy, cfg *Config) {
 		slog.Error("Failed to create destination connection", "address", destAddr, "port", destPort, "error", err)
 		return
 	}
-	defer sshProxyClient.Close()
+	defer sp.Connection.CloseRecursively()
 
 	// Create a connection to the destination address over the SSH proxy
 	dst, err := sshProxyClient.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
