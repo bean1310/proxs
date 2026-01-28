@@ -25,22 +25,22 @@ type sshProxy struct {
 	Connection  *sshConnection
 }
 
-func sshProxySelectFrom(addr string, proxies []sshProxy) (*sshProxy, error) {
+func sshProxySelectFrom(addr string, proxies []sshProxy) (sshProxy, error) {
 	for _, proxy := range proxies {
 		for _, targetAddr := range proxy.TargetAddrs {
 			match, err := filepath.Match(targetAddr, addr)
 			if err != nil {
 				slog.Error("Error matching domain with target address", "domain", addr, "targetAddr", targetAddr, "error", err)
-				return nil, err
+				return sshProxy{}, err
 			}
 			if match {
 				slog.Info("Matched proxy for domain", "domain", addr, "address", proxy)
-				return &proxy, nil
+				return proxy, nil
 			}
 		}
 	}
 	slog.Warn("No proxy found for domain", "domain", addr)
-	return nil, fmt.Errorf("no matching proxy found for address: %s", addr)
+	return sshProxy{}, fmt.Errorf("no matching proxy found for address: %s", addr)
 }
 
 // This function dials an SSH connection recursively through jump hosts.
