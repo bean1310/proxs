@@ -26,12 +26,12 @@ func handleConnection(src net.Conn, proxies []sshProxy, cfg *Config) {
 	}
 
 	// Create SSH connection to the last jump host in the chain
-	sshProxyClient, err := sp.Connection.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
+	sshProxyClient, cleanup, err := sp.Connection.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))
 	if err != nil {
 		slog.Error("Failed to create destination connection", "address", destAddr, "port", destPort, "error", err)
 		return
 	}
-	defer sp.Connection.CloseRecursively()
+	defer cleanup()
 
 	// Create a connection to the destination address over the SSH proxy
 	dst, err := sshProxyClient.Dial("tcp", net.JoinHostPort(destAddr, fmt.Sprintf("%d", destPort)))

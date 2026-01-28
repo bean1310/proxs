@@ -16,7 +16,6 @@ type sshConnection struct {
 	User     string
 	Port     int
 	JumpHost *sshConnection
-	Conn     *ssh.Conn
 }
 
 type sshProxy struct {
@@ -44,7 +43,8 @@ func sshProxySelectFrom(addr string, proxies []sshProxy) (sshProxy, error) {
 }
 
 // This function dials an SSH connection recursively through jump hosts.
-func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, error) {
+// Returns the SSH client and a cleanup function that closes all connections.
+func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, func(), error) {
 	if sc.JumpHost == nil {
 		config, cleanup, err := authFromAgent()
 		if err != nil {
@@ -60,25 +60,25 @@ func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, error) {
 		slog.Info("Dialing SSH connection", "hostname", sc.HostName, "port", sc.Port)
 		conn, err := ssh.Dial(network, fmt.Sprintf("%s:%d", sc.HostName, sc.Port), sshConfig)
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial SSH connection: %w", err)
+			return nil, nil, fmt.Errorf("failed to dial SSH connection: %w", err)
 		}
 
-		sc.Conn = &conn.Conn
-
-		return conn, nil
+		return conn, func() { conn.Close() }, nil
 	} else {
-		jumpClient, err := sc.JumpHost.Dial(network, "")
+		jumpClient, jumpCleanup, err := sc.JumpHost.Dial(network, "")
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial jump host: %w", err)
+			return nil, nil, fmt.Errorf("failed to dial jump host: %w", err)
 		}
 		ncc, err := jumpClient.Dial(network, fmt.Sprintf("%s:%d", sc.HostName, sc.Port))
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial target host through jump host: %w", err)
+			jumpCleanup()
+			return nil, nil, fmt.Errorf("failed to dial target host through jump host: %w", err)
 		}
 
 		config, cleanup, err := authFromAgent()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create auth from agent: %w", err)
+			jumpCleanup()
+			return nil, nil, fmt.Errorf("failed to create auth from agent: %w", err)
 		}
 		defer cleanup()
 
@@ -88,31 +88,18 @@ func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, error) {
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(), // This code is insecure; use a proper host key callback in production
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create new SSH client connection: %w", err)
+			jumpCleanup()
+			return nil, nil, fmt.Errorf("failed to create new SSH client connection: %w", err)
 		}
 
-		sc.Conn = &conn
-
-		return ssh.NewClient(conn, chans, reqs), nil
+		client := ssh.NewClient(conn, chans, reqs)
+		// cleanupAll closes this connection and recursively closes all jump host connections
+		cleanupAll := func() {
+			client.Close()
+			jumpCleanup() // This recursively closes all jump host connections in the chain
+		}
+		return client, cleanupAll, nil
 	}
-}
-
-// Close closes the SSH connection.
-func (sc *sshConnection) CloseRecursively() error {
-	if sc.Conn != nil {
-		// First, close self connection
-		conn := *sc.Conn
-		err := conn.Close()
-		if err != nil {
-			return err
-		}
-
-		// Then, close jump host connection recursively
-		if sc.JumpHost != nil {
-			return sc.JumpHost.CloseRecursively()
-		}
-	}
-	return nil
 }
 
 func authFromAgent() (ssh.AuthMethod, func(), error) {
