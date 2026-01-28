@@ -48,7 +48,7 @@ func (sc *sshConnection) Dial(network, addr string) (*ssh.Client, func(), error)
 	if sc.JumpHost == nil {
 		config, cleanup, err := authFromAgent()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create auth from agent: %w", err)
+			return nil, nil, fmt.Errorf("failed to create auth from agent: %w", err)
 		}
 		defer cleanup()
 
