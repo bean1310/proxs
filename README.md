@@ -4,10 +4,12 @@ Proxs is a lightweight SOCKS5 proxy that forwards traffic through SSH tunnels.
 It chooses a tunnel based on the destination address, allowing transparent access
 to hosts behind multiple bastions.
 
+This project was developed from a prototype presented in a talk at [生成 AI からセキュリティまで！数年ぶりのオフライン開催 Tech-Night イベントレポート - NTT docomo Business Engineers' Blog](https://engineers.ntt.com/entry/202509-tech-night-irl/entry#Socks-Proxy-%E3%81%8C%E3%81%A4%E3%82%89%E3%81%84).
+
 ## Building
 
-```sh
-go build
+```shell-session
+$ make
 ```
 
 The resulting binary can then be executed directly.
@@ -24,17 +26,14 @@ Example:
 port = 8080
 
 [proxy.env1]
-hostname = "dev-instance-1.local"
-user = "ubuntu"
-port = 22
+host = "prox-env1"
 target_addrs = ["dev-instance-1.local"]
 ```
 
 Each proxy entry includes:
 
-- `hostname` – SSH host to dial.
-- `user` – SSH user name.
-- `port` – SSH port on the host.
+- `host` – SSH host to dial. This should be defined in your SSH config (`~/.ssh/config`) with the necessary
+  connection details (hostname, user, key, etc.).
 - `target_addrs` – List of destination hostnames or glob patterns that should
   be routed through this proxy.
 
@@ -96,3 +95,6 @@ sequenceDiagram
     PS-->>C: 転送
     end
 ```
+
+## License
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
