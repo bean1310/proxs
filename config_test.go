@@ -1,44 +1,89 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
-func TestGetSocksAddrport(t *testing.T) {
-	cfg := &Config{
-		Proxies: map[string]sshProxy{
-			"example": {Port: 1080, TargetAddrs: []string{"example.com", "example.org", "example*"}},
-		},
-	}
-
-	addr, port, err := GetSocksAddrport(cfg, "example.com")
+func TestMakeNestedSshConnection(t *testing.T) {
+	// Create a temporary ssh config file
+	tmpfile, err := os.CreateTemp("", "ssh_config")
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		t.Fatal(err)
 	}
-	if addr != "127.0.0.1" {
-		t.Fatalf("Expected address 127.0.0.1, got %v", addr)
+	defer os.Remove(tmpfile.Name())
+
+	// Write test data to the temporary ssh config file
+	content := `
+Host testhost
+    HostName example.com
+    User testuser
+
+Host testhost_with_jump
+	HostName jump.example.com
+	User jumpuser
+	Port 2200
+	ProxyJump testhost
+`
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatal(err)
 	}
-	if port != 1080 {
-		t.Fatalf("Expected port 1080, got %v", port)
+	tmpfile.Close()
+
+	// Define SSH_CONFIG_FILE environment variable to point to the temporary file
+	os.Setenv("SSH_CONFIG_FILE", tmpfile.Name())
+	defer os.Unsetenv("SSH_CONFIG_FILE")
+
+	// Execute the test
+	conn, err := makeNestedSshConnection("testhost")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	addr, port, err = GetSocksAddrport(cfg, "example.org")
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-	if addr != "127.0.0.1" {
-		t.Fatalf("Expected address 127.0.0.1, got %v", addr)
-	}
-	if port != 1080 {
-		t.Fatalf("Expected port 1080, got %v", port)
+	// Simple host test
+	if conn.HostName != "example.com" {
+		t.Errorf("expected example.com, got %s", conn.HostName)
 	}
 
-	addr, port, err = GetSocksAddrport(cfg, "example.net")
+	if conn.User != "testuser" {
+		t.Errorf("expected testuser, got %s", conn.User)
+	}
+
+	if conn.Port != 22 {
+		t.Errorf("expected port 22, got %d", conn.Port)
+	}
+
+	// Test with ProxyJump
+	connWithJump, err := makeNestedSshConnection("testhost_with_jump")
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		t.Fatal(err)
 	}
-	if addr != "127.0.0.1" {
-		t.Fatalf("Expected address 127.0.0.1, got %v", addr)
+
+	if connWithJump.HostName != "jump.example.com" {
+		t.Errorf("expected jump.example.com, got %s", connWithJump.HostName)
 	}
-	if port != 1080 {
-		t.Fatalf("Expected port 1080, got %v", port)
+
+	if connWithJump.User != "jumpuser" {
+		t.Errorf("expected jumpuser, got %s", connWithJump.User)
+	}
+
+	if connWithJump.Port != 2200 {
+		t.Errorf("expected port 2200, got %d", connWithJump.Port)
+	}
+
+	if connWithJump.JumpHost == nil {
+		t.Fatal("expected JumpHost to be set, but it is nil")
+	}
+
+	if connWithJump.JumpHost.HostName != "example.com" {
+		t.Errorf("expected jump host example.com, got %s", connWithJump.JumpHost.HostName)
+	}
+
+	if connWithJump.JumpHost.User != "testuser" {
+		t.Errorf("expected jump host user testuser, got %s", connWithJump.JumpHost.User)
+	}
+
+	if connWithJump.JumpHost.Port != 22 {
+		t.Errorf("expected jump host port 22, got %d", connWithJump.JumpHost.Port)
 	}
 }

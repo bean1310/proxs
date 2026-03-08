@@ -2,10 +2,14 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"log"
 	"net"
 )
+
+var unsupportedSocksVersionError = errors.New("unsupported SOCKS version")
+var noAuthMethodsError = errors.New("no authentication methods provided")
 
 // https://datatracker.ietf.org/doc/html/rfc1928#autoid-3
 //
@@ -110,12 +114,12 @@ func socksConnection(src net.Conn, cfg *Config) (destAddr string, destPort uint1
 
 	if am.Ver != 5 {
 		log.Printf("Unsupported SOCKS version: %d", am.Ver)
-		return
+		return "", 0, unsupportedSocksVersionError
 	}
 
 	if am.NMethods == 0 || len(am.Methods) == 0 {
 		log.Println("No authentication methods provided")
-		return
+		return "", 0, noAuthMethodsError
 	}
 
 	src.Write([]byte{5, 0}) // Reply with no authentication required
