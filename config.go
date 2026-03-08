@@ -52,6 +52,10 @@ func makeNestedSshConnection(host string) (*sshConnection, error) {
 		slog.Error("Failed to get HostName from ssh config", "host", host, "error", err)
 		return nil, err
 	}
+	// If HostName is not set in SSH config, fall back to using the host itself
+	if result.HostName == "" {
+		result.HostName = host
+	}
 
 	portStr, err := cfg.Get(host, "Port")
 	if err != nil {
@@ -71,6 +75,10 @@ func makeNestedSshConnection(host string) (*sshConnection, error) {
 	if err != nil {
 		slog.Error("Failed to get User from ssh config", "host", host, "error", err)
 		return nil, err
+	}
+	// If User is not set in SSH config, fall back to the current OS user
+	if result.User == "" {
+		result.User = os.Getenv("USER")
 	}
 
 	return result, nil
